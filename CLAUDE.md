@@ -25,6 +25,7 @@ React 19 + Vite 8 + TypeScript 7、idb、barcode-detector（zxing-wasm）、JsBa
 
 ## Lessons Learned
 - 資料夾名稱含中文，`npm init -y` 會失敗；之後 `npm install` 會往上找到 `C:\Users\sn698\package.json` 裝錯地方。本專案已有 package.json，不要再 init。
+- 家目錄 `C:\Users\sn698\node_modules\@types` 會被 TypeScript 往上找到，本機 typecheck 過但 CI 失敗；tsconfig 已鎖 `typeRoots` 為專案內。
 - `vite preview` 也是 `command === 'serve'`，basic-ssl 要用 `!isPreview` 排除，否則預覽變 HTTPS 打不開。
 - zxing-wasm 預設從 jsDelivr 抓 wasm，必須 `prepareZXingModule` 覆寫 `locateFile`；bundle 內仍會留有 jsdelivr 字串，屬正常（CSP 也會擋）。
 - 真實卡號、照片、`*.bak-*`（舊版指引含實卡號）不進版控；測試一律用虛構卡號。
