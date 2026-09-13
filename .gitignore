@@ -1,0 +1,17 @@
+# 真實卡片照片與重繪條碼等同現金，一律不進版控（開發指引 §3.1）
+samples/
+*.jpg
+*.jpeg
+*.png
+!public/icons/*.png
+
+# 舊版開發指引備份含實卡號
+*.bak-*
+
+# 建置與相依套件
+node_modules/
+dist/
+dev-dist/
+coverage/
+*.local
+.vite/
