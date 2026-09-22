@@ -76,8 +76,12 @@ function PlanView({ amount, onEditAmount }: { amount: number; onEditAmount: () =
   const [picking, setPicking] = useState(false);
   const [starting, setStarting] = useState(false);
   const maxCards = settings.maxCardsPerTransaction;
+  const cashTopUpTolerance = settings.maxCashTopUpForClear;
 
-  const auto = useMemo(() => planPayment({ amount, cards, strategy, maxCards }), [amount, cards, strategy, maxCards]);
+  const auto = useMemo(
+    () => planPayment({ amount, cards, strategy, maxCards, cashTopUpTolerance }),
+    [amount, cards, strategy, maxCards, cashTopUpTolerance],
+  );
   const manual = useMemo(() => {
     if (!manualIds) return null;
     const selected = manualIds.map((id) => cards.find((c) => c.id === id)).filter((c): c is Card => !!c);
@@ -107,6 +111,7 @@ function PlanView({ amount, onEditAmount }: { amount: number; onEditAmount: () =
         totalAmount: amount,
         strategyUsed: manual ? 'manual' : strategy,
         cashTopUp,
+        note: manual ? undefined : auto.note,
         lines: lines.map((l) => ({ cardId: l.card.id, plannedDeduct: l.deduct, balanceBefore: l.card.balance })),
       });
       await reload();
@@ -142,6 +147,9 @@ function PlanView({ amount, onEditAmount }: { amount: number; onEditAmount: () =
       )}
       {!manual && auto.note === 'FALLBACK_TO_MIN_CARDS' && (
         <p className="notice">清零頭會需要多付現金，已改用最少張數的組合。</p>
+      )}
+      {!manual && auto.note === 'CASH_TOPUP_FOR_CLEAR' && (
+        <p className="notice">補一點現金可以多清空一張零頭卡，已採用這組（補現金上限 {cashTopUpTolerance} 元，可在設定調整）。</p>
       )}
 
       {auto.warning === 'NO_CARDS' && !manual ? (

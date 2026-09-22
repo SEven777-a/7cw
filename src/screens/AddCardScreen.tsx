@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWallet } from '../app/wallet';
 import { addCard, findByCodes } from '../db/db';
-import { last4 } from '../domain/validate';
+import { isValidCode, last4, scanCompleteness } from '../domain/validate';
+import { isIOS } from '../platform';
 import { captureVideoFrame, compressToJpeg } from '../scan/photo';
 import { detectCardCodes, warmUpDetector, type CardCodes } from '../scan/scanner';
 import { BlobImage, Header, parseIntInput } from '../ui/common';
@@ -14,11 +15,18 @@ interface Scanned {
   photo: Blob;
 }
 
+/** FR-01 補救：卡號條碼破損解不出，但下方條碼（hiddenCode）已經讀到 */
+interface NeedCode {
+  hiddenCode: string;
+  photo: Blob;
+}
+
 const FACE_VALUES = [35, 50, 100];
 
 export function AddCardScreen() {
   const { go } = useWallet();
   const [scanned, setScanned] = useState<Scanned | null>(null);
+  const [needCode, setNeedCode] = useState<NeedCode | null>(null);
   const [savedCount, setSavedCount] = useState(0);
 
   return (
@@ -38,8 +46,10 @@ export function AddCardScreen() {
             else go({ name: 'tabs', tab: 'cards' });
           }}
         />
+      ) : needCode ? (
+        <ManualCodeForm needCode={needCode} onCancel={() => setNeedCode(null)} onResolved={setScanned} />
       ) : (
-        <Scanner onScanned={setScanned} />
+        <Scanner onScanned={setScanned} onNeedCode={setNeedCode} />
       )}
     </div>
   );
@@ -47,7 +57,7 @@ export function AddCardScreen() {
 
 // ───────── 掃描 ─────────
 
-function Scanner({ onScanned }: { onScanned: (s: Scanned) => void }) {
+function Scanner({ onScanned, onNeedCode }: { onScanned: (s: Scanned) => void; onNeedCode: (n: NeedCode) => void }) {
   const { db } = useWallet();
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -88,7 +98,7 @@ function Scanner({ onScanned }: { onScanned: (s: Scanned) => void }) {
           try {
             const codes = await detectCardCodes(video);
             setPartial(codes);
-            if (codes.code && codes.hiddenCode) {
+            if (scanCompleteness(codes) === 'complete' && codes.code && codes.hiddenCode) {
               const key = codes.code + codes.hiddenCode;
               if (key !== lastRejected) {
                 const photo = await captureVideoFrame(video);
@@ -138,8 +148,12 @@ function Scanner({ onScanned }: { onScanned: (s: Scanned) => void }) {
       const codes = await detectCardCodes(bitmap);
       const photo = await compressToJpeg(bitmap, bitmap.width, bitmap.height);
       bitmap.close();
-      if (codes.code && codes.hiddenCode) {
-        await accept({ code: codes.code, hiddenCode: codes.hiddenCode }, photo);
+      const completeness = scanCompleteness(codes);
+      if (completeness === 'complete') {
+        await accept({ code: codes.code!, hiddenCode: codes.hiddenCode! }, photo);
+      } else if (completeness === 'need-code') {
+        // 卡號條碼破損解不出，下方條碼已讀到：帶著 hiddenCode 與照片進手動輸入卡號表單（FR-01）
+        onNeedCode({ hiddenCode: codes.hiddenCode!, photo });
       } else {
         setPartial(codes);
         setMessage(hintFor(codes, true));
@@ -157,7 +171,11 @@ function Scanner({ onScanned }: { onScanned: (s: Scanned) => void }) {
       {cameraError ? (
         <div className="callout">
           <b>{cameraError}</b>
-          <p>到 iPhone「設定 › Safari › 相機」允許，或改用下方「拍照解碼」。</p>
+          <p>
+            {isIOS()
+              ? '到 iPhone「設定 › Safari › 相機」允許，或改用下方「拍照解碼」。'
+              : '到手機「設定 › App › Chrome › 權限 › 相機」允許，或點瀏覽器網址列的鎖頭圖示允許相機，也可改用下方「拍照解碼」。'}
+          </p>
         </div>
       ) : (
         <div className="viewfinder">
@@ -193,6 +211,78 @@ function hintFor(codes: CardCodes, fromPhoto: boolean): string {
   return fromPhoto
     ? '照片裡讀不到條碼：正對卡片、避免反光、光線充足後重拍'
     : '把卡片正面放進框內，兩條條碼都要入鏡，距離約 15–20 公分';
+}
+
+// ───────── 手動輸入卡號（FR-01 補救：卡號條碼破損，hiddenCode 已讀到）─────────
+
+/** 只有一個欄位：卡號。hiddenCode 卡面沒印，一律不可手動輸入（§5 FR-01、§6.2） */
+function ManualCodeForm({
+  needCode,
+  onCancel,
+  onResolved,
+}: {
+  needCode: NeedCode;
+  onCancel: () => void;
+  onResolved: (s: Scanned) => void;
+}) {
+  const { db } = useWallet();
+  const [codeText, setCodeText] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  async function submit() {
+    const code = codeText.trim();
+    if (!isValidCode(code)) {
+      setMessage('卡號需為 16 位數字，請對照卡面重新輸入');
+      return;
+    }
+    setChecking(true);
+    setMessage(null);
+    try {
+      const { byCode, byHidden } = await findByCodes(db, code, needCode.hiddenCode);
+      if (byCode || byHidden) {
+        const existing = byCode ?? byHidden!;
+        const name = `${existing.nickname ? existing.nickname + ' ' : ''}末 ${last4(existing.code)}`;
+        const same = byCode && byHidden && byCode.id === byHidden.id;
+        setMessage(same ? `這張卡已經存過了（${name}）` : `資料可能有誤，請重新核對卡號（與 ${name} 部分相同）`);
+        return;
+      }
+      onResolved({ code, hiddenCode: needCode.hiddenCode, photo: needCode.photo });
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div className="form">
+      <div className="scanned-card">
+        <BlobImage blob={needCode.photo} alt="剛拍的卡片" className="photo-thumb" />
+        <div>
+          <b>下方條碼讀到了，卡號條碼讀不到</b>
+          <p className="muted">請對照卡面數字輸入卡號，App 不會幫你檢查是否正確</p>
+        </div>
+      </div>
+
+      <label>
+        卡號（16 位數字）
+        <input
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={16}
+          value={codeText}
+          onChange={(e) => setCodeText(e.target.value)}
+        />
+      </label>
+      {message && <p className="scan-hint">{message}</p>}
+
+      <button className="primary block" disabled={checking} onClick={() => void submit()}>
+        {checking ? '確認中…' : '確認卡號'}
+      </button>
+      <button className="link block" onClick={onCancel}>
+        取消，重新掃描
+      </button>
+    </div>
+  );
 }
 
 // ───────── 表單 ─────────

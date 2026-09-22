@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getPendingTransaction, getSettings, listCards, openWalletDB, type WalletDB } from '../db/db';
 import type { Card, Settings, Transaction } from '../domain/types';
+import { shouldShowOnboarding } from './onboarding';
 
 export type Tab = 'checkout' | 'cards' | 'settings';
 
@@ -12,7 +13,8 @@ export type Route =
   | { name: 'card'; id: string; afterPresent?: boolean }
   | { name: 'archived' }
   | { name: 'present'; txId?: string; cardIds: string[] }
-  | { name: 'backfill'; txId: string };
+  | { name: 'backfill'; txId: string }
+  | { name: 'onboarding' };
 
 interface WalletState {
   db: WalletDB;
@@ -55,7 +57,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setArchived(arch);
     setSettings(s);
     setPending(p);
-    return p;
+    // cardCount 含已封存：封存過卡的人顯然也已經會用了
+    return { settings: s, pending: p, cardCount: active.length + arch.length };
   }, []);
 
   useEffect(() => {
@@ -64,9 +67,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       .then(async (conn) => {
         if (cancelled) return;
         setDb(conn);
-        const p = await load(conn);
-        // FR-05：啟動時若有未回填交易，直接進回填頁
-        if (p) setRoute({ name: 'backfill', txId: p.id });
+        const { settings: s, pending: p, cardCount } = await load(conn);
+        // FR-05：啟動時若有未回填交易，直接進回填頁（優先於新手引導，見 shouldShowOnboarding）
+        if (p) {
+          setRoute({ name: 'backfill', txId: p.id });
+        } else if (shouldShowOnboarding(s, p, cardCount)) {
+          setRoute({ name: 'onboarding' });
+        }
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
     return () => {

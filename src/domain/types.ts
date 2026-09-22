@@ -46,6 +46,7 @@ export interface Settings {
   defaultStrategy: Strategy;
   maxCardsPerTransaction: number;
   archiveThreshold: number;
+  maxCashTopUpForClear: number; // v1.5 §8.5 B-3：為多清空零頭卡，願意比策略 A 多付的現金上限（元）
   lockEnabled: boolean;
   lockMethod: 'webauthn' | 'pin';
   pinHash?: string;
@@ -63,6 +64,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultStrategy: 'clear_fragments',
   maxCardsPerTransaction: 6,
   archiveThreshold: 0,
+  maxCashTopUpForClear: 20,
   lockEnabled: false,
   lockMethod: 'pin',
   failedAttempts: 0,

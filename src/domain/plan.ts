@@ -8,6 +8,11 @@ export interface PlanInput {
   cards: Card[];
   strategy: Strategy;
   maxCards: number;
+  /**
+   * 允許為了「多清空一張零頭卡」而比策略 A 多付的現金上限（元）。
+   * 未提供、非整數或 <= 0 時一律視為 0，行為與 v1.4 完全相同（策略 B 絕不比策略 A 多付現金）。
+   */
+  cashTopUpTolerance?: number;
 }
 
 export interface PlanLine {
@@ -23,7 +28,7 @@ export interface PlanResult {
   fullyConsumedCount: number;
   error?: 'INVALID_AMOUNT';
   warning?: 'NO_CARDS' | 'NEED_CASH';
-  note?: 'FALLBACK_TO_MIN_CARDS';
+  note?: 'FALLBACK_TO_MIN_CARDS' | 'CASH_TOPUP_FOR_CLEAR';
 }
 
 export interface AllocateResult {
@@ -179,9 +184,17 @@ export function planPayment(input: PlanInput): PlanResult {
   if (strategy === 'min_cards') return planA;
 
   const greedyB = toPlanResult(allocate(pickGreedyFragments(usable, amount, maxCards), amount));
-  if (isBetter(planA, greedyB)) {
+
+  // B-3（v1.5）：容忍度門檻內，允許用小額現金換「多清空一張零頭卡」。
+  // tolerance = 0（預設）時 clearsMoreForSmallCash 恆為 false，B-2 的既有判斷完全不受影響。
+  const tolerance = Number.isInteger(input.cashTopUpTolerance) && input.cashTopUpTolerance! > 0 ? input.cashTopUpTolerance! : 0;
+  const extraCash = greedyB.cashTopUp - planA.cashTopUp; // 相對策略 A 多付的現金
+  const clearsMoreForSmallCash = greedyB.fullyConsumedCount > planA.fullyConsumedCount && extraCash > 0 && extraCash <= tolerance;
+
+  if (isBetter(planA, greedyB) && !clearsMoreForSmallCash) {
     if (greedyB.cashTopUp > planA.cashTopUp) planA.note = 'FALLBACK_TO_MIN_CARDS';
     return planA;
   }
+  if (clearsMoreForSmallCash) greedyB.note = 'CASH_TOPUP_FOR_CLEAR';
   return greedyB;
 }

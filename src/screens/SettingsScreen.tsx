@@ -4,11 +4,11 @@ import { useEffect, useState } from 'react';
 import { useWallet } from '../app/wallet';
 import { saveSettings } from '../db/db';
 import type { Settings, Strategy } from '../domain/types';
-import { isStandalone, isStoragePersisted } from '../platform';
+import { isAndroid, isStandalone, isStoragePersisted } from '../platform';
 import { Header } from '../ui/common';
 
 export function SettingsScreen() {
-  const { db, settings, reload } = useWallet();
+  const { db, settings, reload, go } = useWallet();
   const [persisted, setPersisted] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -18,6 +18,11 @@ export function SettingsScreen() {
   async function update(patch: Partial<Settings>) {
     await saveSettings(db, patch);
     await reload();
+  }
+
+  async function replayOnboarding() {
+    await update({ onboardingDone: false });
+    go({ name: 'onboarding' });
   }
 
   return (
@@ -49,6 +54,11 @@ export function SettingsScreen() {
           <span>餘額 ≤ 多少時建議封存</span>
           <Stepper value={settings.archiveThreshold} min={0} max={20} onChange={(v) => void update({ archiveThreshold: v })} />
         </div>
+        <div className="setting">
+          <span>允許補現金清零頭（上限）</span>
+          <Stepper value={settings.maxCashTopUpForClear} min={0} max={50} onChange={(v) => void update({ maxCashTopUpForClear: v })} />
+        </div>
+        <p className="muted">設 0 表示絕不為了清零頭多付現金。</p>
       </section>
 
       <section className="settings-group">
@@ -67,7 +77,13 @@ export function SettingsScreen() {
         </div>
         <div className="setting">
           <span>主畫面模式</span>
-          <span className="muted">{isStandalone() ? '是' : '否（瀏覽器分頁）'}</span>
+          <span className="muted">
+            {isStandalone()
+              ? '是'
+              : isAndroid()
+                ? '否，但可使用（瀏覽器分頁，建議加入主畫面更好用）'
+                : '否，唯讀（請先加入主畫面才能新增／編輯卡片）'}
+          </span>
         </div>
         <div className="setting">
           <span>持久化儲存</span>
@@ -77,6 +93,9 @@ export function SettingsScreen() {
           <span>版本</span>
           <span className="muted">{__APP_VERSION__}</span>
         </div>
+        <button className="link block" onClick={() => void replayOnboarding()}>
+          重新顯示新手引導
+        </button>
       </section>
     </div>
   );

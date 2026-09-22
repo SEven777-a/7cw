@@ -15,3 +15,6 @@ dev-dist/
 coverage/
 *.local
 .vite/
+
+# 任務編排的過程紀錄，不進版控
+.orchestration/

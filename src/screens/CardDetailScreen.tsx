@@ -46,7 +46,7 @@ export function CardDetailScreen({ id, afterPresent }: { id: string; afterPresen
       return;
     }
     const patch: Parameters<typeof updateCard>[2] = { nickname };
-    if (newBalance !== card.balance) Object.assign(patch, { balance: newBalance, balanceSource: 'receipt' });
+    if (newBalance !== card.balance) Object.assign(patch, { balance: newBalance, balanceSource: 'estimated' });
     const next = await updateCard(db, card.id, patch);
     setCard(next);
     await reload();

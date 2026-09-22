@@ -177,7 +177,7 @@ export interface PendingLineInput {
 
 export async function createPendingTransaction(
   db: WalletDB,
-  input: { totalAmount: number; strategyUsed: Transaction['strategyUsed']; lines: PendingLineInput[]; cashTopUp: number },
+  input: { totalAmount: number; strategyUsed: Transaction['strategyUsed']; lines: PendingLineInput[]; cashTopUp: number; note?: string },
   now = Date.now(),
 ): Promise<Transaction> {
   const tx = db.transaction('transactions', 'readwrite');
@@ -195,6 +195,7 @@ export async function createPendingTransaction(
     strategyUsed: input.strategyUsed,
     cashTopUp: input.cashTopUp,
     lines: input.lines.map<TransactionLine>((l, i) => ({ ...l, order: i + 1, swiped: false })),
+    note: input.note,
   };
   await tx.store.add(record);
   await tx.done;

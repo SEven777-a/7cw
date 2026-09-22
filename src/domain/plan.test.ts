@@ -26,6 +26,10 @@ const cards = (...balances: number[]) => balances.map((b) => card(b));
 function plan(amount: number, cs: Card[], strategy: Strategy, maxCards = 6): PlanResult {
   return planPayment({ amount, cards: cs, strategy, maxCards });
 }
+/** v1.5：帶 cashTopUpTolerance 的呼叫（既有的 plan() 一律不傳，維持 tolerance = 0 的語意） */
+function planWithTolerance(amount: number, cs: Card[], strategy: Strategy, maxCards: number, cashTopUpTolerance: number): PlanResult {
+  return planPayment({ amount, cards: cs, strategy, maxCards, cashTopUpTolerance });
+}
 /** 以 [餘額, 扣款] 表示結果，方便對照規格 */
 const summary = (r: PlanResult) => r.lines.map((l) => [l.card.balance, l.deduct]);
 
@@ -136,6 +140,71 @@ describe('§10.1 配卡演算法', () => {
     expect(summary(r as PlanResult)).toEqual([[35, 35], [50, 5]]);
     expect(r.unusedCards.map((c) => c.balance)).toEqual([500]);
   });
+
+  it('UT-20 容忍度內補小額現金，多清空一張零頭卡', () => {
+    const cs = cards(8, 12, 45);
+    // 策略 A：[45, 12] → cashTopUp 0、清空 1 張（45 剩 2）
+    const a = plan(55, cs, 'min_cards', 2);
+    expect(summary(a)).toEqual([[12, 12], [45, 43]]);
+    expect(a.cashTopUp).toBe(0);
+    expect(a.fullyConsumedCount).toBe(1);
+    // 策略 B + tolerance 10：[8, 45] → 多付 2 元現金，但清空 2 張
+    const r = planWithTolerance(55, cs, 'clear_fragments', 2, 10);
+    expect(summary(r)).toEqual([[8, 8], [45, 45]]);
+    expect(r.cashTopUp).toBe(2);
+    expect(r.fullyConsumedCount).toBe(2);
+    expect(r.note).toBe('CASH_TOPUP_FOR_CLEAR');
+    expect(r.warning).toBe('NEED_CASH');
+  });
+
+  it('UT-21 同一組輸入，tolerance 為 0 或未提供時維持 v1.4 行為', () => {
+    const cs = cards(8, 12, 45);
+    for (const r of [plan(55, cs, 'clear_fragments', 2), planWithTolerance(55, cs, 'clear_fragments', 2, 0)]) {
+      expect(summary(r)).toEqual([[12, 12], [45, 43]]);
+      expect(r.cashTopUp).toBe(0);
+      expect(r.note).toBe('FALLBACK_TO_MIN_CARDS');
+    }
+  });
+
+  it('UT-22 超出容忍度就不補現金（門檻是「相對策略 A 多付的部分」）', () => {
+    const cs = cards(8, 12, 45);
+    // 多付 2 元 > tolerance 1 → 退回策略 A
+    const tight = planWithTolerance(55, cs, 'clear_fragments', 2, 1);
+    expect(tight.cashTopUp).toBe(0);
+    expect(tight.note).toBe('FALLBACK_TO_MIN_CARDS');
+    // 剛好等於容忍度 → 允許
+    const exact = planWithTolerance(55, cs, 'clear_fragments', 2, 2);
+    expect(exact.cashTopUp).toBe(2);
+    expect(exact.note).toBe('CASH_TOPUP_FOR_CLEAR');
+  });
+
+  it('UT-23 策略 A 本來就要補現金時，門檻只看「多付的差額」不看總額', () => {
+    // 總額 100，卡 [9, 40]：兩策略都湊不滿，策略 A 的 cashTopUp 已是 51
+    const cs = cards(9, 40);
+    const a = plan(100, cs, 'min_cards', 2);
+    expect(a.cashTopUp).toBe(51);
+    // 策略 B 也是同一組卡，extraCash = 0 → 不標新 note（不會因為 cashTopUp(51) > tolerance 就誤判）
+    const r = planWithTolerance(100, cs, 'clear_fragments', 2, 10);
+    expect(r.cashTopUp).toBe(51);
+    expect(r.note).toBeUndefined();
+  });
+
+  it('UT-24 tolerance 非正整數一律視為 0', () => {
+    const cs = cards(8, 12, 45);
+    for (const t of [-5, 0, 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const r = planWithTolerance(55, cs, 'clear_fragments', 2, t);
+      expect(r.cashTopUp).toBe(0);
+      expect(r.note).toBe('FALLBACK_TO_MIN_CARDS');
+    }
+  });
+
+  it('UT-25 min_cards 策略不受 tolerance 影響', () => {
+    const cs = cards(8, 12, 45);
+    const r = planWithTolerance(55, cs, 'min_cards', 2, 10);
+    expect(summary(r)).toEqual([[12, 12], [45, 43]]);
+    expect(r.cashTopUp).toBe(0);
+    expect(r.note).toBeUndefined();
+  });
 });
 
 describe('§10.1 性質測試（各 1000 組）', () => {
@@ -208,6 +277,62 @@ describe('§10.1 性質測試（各 1000 組）', () => {
         }
         const ids = (r: PlanResult) => r.lines.map((l) => [l.card.id, l.deduct]);
         expect(ids(plan(amount, shuffled, s, max))).toEqual(ids(plan(amount, cs, s, max)));
+      }),
+      params,
+    );
+  });
+
+  it('UT-26 tolerance = 0 與未提供時輸出完全一致（v1.5 回歸網）', () => {
+    fc.assert(
+      fc.property(walletArb, amountArb, strategyArb, maxArb, (w, amount, s, max) => {
+        const cs = toCards(w);
+        expect(planWithTolerance(amount, cs, s, max, 0)).toEqual(plan(amount, cs, s, max));
+      }),
+      params,
+    );
+  });
+
+  it('UT-27 上限不變量：B.cashTopUp <= A.cashTopUp + tolerance', () => {
+    fc.assert(
+      fc.property(walletArb, amountArb, maxArb, fc.integer({ min: 0, max: 200 }), (w, amount, max, tol) => {
+        const cs = toCards(w);
+        const a = plan(amount, cs, 'min_cards', max);
+        const b = planWithTolerance(amount, cs, 'clear_fragments', max, tol);
+        expect(b.cashTopUp).toBeLessThanOrEqual(a.cashTopUp + tol);
+        // 只有真的多付現金時才會標新 note，且必定多清空至少一張
+        if (b.note === 'CASH_TOPUP_FOR_CLEAR') {
+          expect(b.cashTopUp).toBeGreaterThan(a.cashTopUp);
+          expect(b.fullyConsumedCount).toBeGreaterThan(a.fullyConsumedCount);
+        }
+      }),
+      params,
+    );
+  });
+
+  /**
+   * UT-28：釘住「B-3 觸發時策略 A 必定不需要補現金」這個不變量。
+   *
+   * 由來：OPS 驗收時指出，把 `extraCash <= tolerance` 誤寫成 `greedyB.cashTopUp <= tolerance`
+   * （總額當差額用）不會被任何測試抓到，判定為測試缺口。實際追下去發現**兩者在可達狀態空間裡等價**：
+   *
+   * B-3 要觸發，greedyB 必須清空得比策略 A 多。但策略 A 只要 cashTopUp > 0，就代表它從頭到尾
+   * 沒找到能覆蓋餘額的卡、每輪都取最大張，選到的卡經 allocate 後會全部清空，
+   * 且已選滿 maxCards（或把牌全選光）——greedyB 不可能再清空更多。
+   * 因此 `clearsMoreForSmallCash` 成立時 `planA.cashTopUp` 必為 0，此時 extraCash === greedyB.cashTopUp。
+   *
+   * 所以那不是缺口，是一個沒被寫下來的不變量。這條測試把它釘住：
+   * 日後若有人改動選卡邏輯讓「A 要補現金時 B-3 也能觸發」，這條會紅，
+   * 屆時 `extraCash` 與總額的區別就會真的有意義，必須回頭確認用的是差額。
+   */
+  it('UT-28 B-3 觸發時，策略 A 必定不需補現金（extraCash === B.cashTopUp）', () => {
+    fc.assert(
+      fc.property(walletArb, amountArb, maxArb, fc.integer({ min: 1, max: 200 }), (w, amount, max, tol) => {
+        const cs = toCards(w);
+        const b = planWithTolerance(amount, cs, 'clear_fragments', max, tol);
+        if (b.note !== 'CASH_TOPUP_FOR_CLEAR') return;
+        const a = plan(amount, cs, 'min_cards', max);
+        expect(a.cashTopUp).toBe(0);
+        expect(b.cashTopUp - a.cashTopUp).toBe(b.cashTopUp);
       }),
       params,
     );
