@@ -51,9 +51,10 @@ export function SettingsScreen() {
           <Stepper value={settings.maxCardsPerTransaction} min={1} max={12} onChange={(v) => void update({ maxCardsPerTransaction: v })} />
         </div>
         <div className="setting">
-          <span>餘額 ≤ 多少時建議封存</span>
+          <span>剩多少餘額時詢問封存</span>
           <Stepper value={settings.archiveThreshold} min={0} max={20} onChange={(v) => void update({ archiveThreshold: v })} />
         </div>
+        <p className="muted">用完（餘額 0）的卡一律自動封存，不會詢問；可在「已封存」還原。設 0 表示還有餘額的卡一律不問。</p>
         <div className="setting">
           <span>允許補現金清零頭（上限）</span>
           <Stepper value={settings.maxCashTopUpForClear} min={0} max={50} onChange={(v) => void update({ maxCashTopUpForClear: v })} />

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useWallet } from '../app/wallet';
 import { archiveCard, cancelPendingTransaction, confirmTransaction, getCard } from '../db/db';
+import { splitArchiveTargets } from '../domain/archive';
 import type { Card } from '../domain/types';
 import { CardName, Header, Money, parseIntInput } from '../ui/common';
 
@@ -29,14 +30,15 @@ export function BackfillScreen({ txId }: { txId: string }) {
     );
   }, [db, tx]);
 
-  // 回填完成後的封存提示（FR-06）
+  // 回填完成後的封存提示（FR-06）。
+  // 用完的卡在 submit() 裡已經直接封存了，走到這裡的一定是「還有餘額」的卡。
   if (toArchive) {
     return (
       <div className="screen">
         <Header title="已回填" />
         <div className="callout">
-          <b>這些卡餘額已用完，要封存嗎？</b>
-          <p>封存後不會出現在清單與建議中，可隨時還原。</p>
+          <b>這些卡只剩一點點餘額，要封存嗎？</b>
+          <p>封存後不會出現在清單與建議中，裡面的餘額也不再拿來配卡。可隨時還原。</p>
         </div>
         <ul className="card-list">
           {toArchive.map((c) => (
@@ -89,14 +91,21 @@ export function BackfillScreen({ txId }: { txId: string }) {
     setSaving(true);
     try {
       const done = await confirmTransaction(db, tx.id, balances, source);
+      const { emptied, lowBalance } = splitArchiveTargets(done.lines, settings.archiveThreshold);
+
+      // 用完的卡直接封存，不再問一次（FR-06）。封存可逆，隨時能在「已封存」還原。
+      for (const cardId of emptied) await archiveCard(db, cardId);
       await reload();
-      toast(source === 'receipt' ? '已依收據回填' : '已用推算值回填');
-      const emptied = done.lines
-        .filter((l) => (l.balanceAfter ?? 1) <= settings.archiveThreshold)
-        .map((l) => cards[l.cardId])
+
+      const filled = source === 'receipt' ? '已依收據回填' : '已用推算值回填';
+      toast(emptied.length > 0 ? `${filled}，已自動封存 ${emptied.length} 張用完的卡` : filled);
+
+      // 還有餘額但低於門檻的才進確認畫面：那筆錢會不會退出配卡建議，由使用者決定。
+      const askList = lowBalance
+        .map((cardId) => cards[cardId])
         .filter((c): c is Card => !!c)
         .map((c) => ({ ...c, balance: done.lines.find((l) => l.cardId === c.id)?.balanceAfter ?? c.balance }));
-      if (emptied.length > 0) setToArchive(emptied);
+      if (askList.length > 0) setToArchive(askList);
       else go({ name: 'tabs', tab: 'checkout' });
     } catch (e) {
       toast(e instanceof Error ? e.message : '回填失敗');
