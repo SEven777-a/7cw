@@ -3,6 +3,28 @@
 
 import { isAndroid, isInAppBrowser, isIOS } from '../platform';
 
+/**
+ * 安裝前就要讓人知道的兩件事。
+ *
+ * 放在這裡而不是只放新手引導：這頁是很多人第一個看到的畫面，而且「資料會不見」
+ * 這件事應該在他把卡存進去之前就知道，不是存完才補說明。
+ * 新手引導有同樣一步，兩邊都留——沒安裝的人看不到引導，略過引導的人看過這頁。
+ */
+function RiskNotice() {
+  return (
+    <div className="callout warn">
+      <b>先知道這兩件事</b>
+      <p>
+        <b>卡片只存在你自己的手機裡</b>，不會上傳到任何地方，別人也看不到。
+        代價是手機掉了、清除瀏覽器資料、刪掉主畫面圖示，卡片紀錄就沒了。存好卡之後請到「設定 → 備份」匯出備份檔。
+      </p>
+      <p>
+        <b>出示條碼的畫面等同現金。</b>不要截圖傳給別人，手機也不要隨便借人。
+      </p>
+    </div>
+  );
+}
+
 export function InstallGuide() {
   const ios = isIOS();
   const androidWebView = isAndroid() && isInAppBrowser();
@@ -69,6 +91,8 @@ export function InstallGuide() {
           </ol>
         </>
       )}
+
+      <RiskNotice />
     </div>
   );
 }

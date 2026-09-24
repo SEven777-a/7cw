@@ -915,3 +915,8 @@ legend {
 .file-input {
   margin-top: 4px;
 }
+
+.install .callout {
+  margin-top: 28px;
+  text-align: left;
+}
