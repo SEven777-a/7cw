@@ -901,3 +901,17 @@ legend {
   flex-direction: column;
   gap: 10px;
 }
+
+/* ───── 備份與還原（FR-07） ───── */
+
+.plain-list {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.file-input {
+  margin-top: 4px;
+}

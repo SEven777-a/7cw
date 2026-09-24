@@ -14,7 +14,8 @@ export type Route =
   | { name: 'archived' }
   | { name: 'present'; txId?: string; cardIds: string[] }
   | { name: 'backfill'; txId: string }
-  | { name: 'onboarding' };
+  | { name: 'onboarding' }
+  | { name: 'backup' };
 
 interface WalletState {
   db: WalletDB;

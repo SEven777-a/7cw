@@ -4,6 +4,7 @@ import { canUseWallet, requestPersistentStorage } from './platform';
 import { AddCardScreen } from './screens/AddCardScreen';
 import { ArchivedScreen } from './screens/ArchivedScreen';
 import { BackfillScreen } from './screens/BackfillScreen';
+import { BackupScreen } from './screens/BackupScreen';
 import { CardDetailScreen } from './screens/CardDetailScreen';
 import { CardsScreen } from './screens/CardsScreen';
 import { CheckoutScreen } from './screens/CheckoutScreen';
@@ -49,6 +50,8 @@ function Shell() {
       return <BackfillScreen txId={route.txId} />;
     case 'onboarding':
       return <OnboardingScreen />;
+    case 'backup':
+      return <BackupScreen />;
     case 'tabs':
       return (
         <div className="app">

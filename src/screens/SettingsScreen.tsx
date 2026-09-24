@@ -71,6 +71,20 @@ export function SettingsScreen() {
       </section>
 
       <section className="settings-group">
+        <h2>備份</h2>
+        <div className="setting">
+          <span>上次備份</span>
+          <span className="muted">
+            {settings.lastExportAt ? new Date(settings.lastExportAt).toLocaleDateString('zh-TW') : '從未備份'}
+          </span>
+        </div>
+        <button className="primary block" onClick={() => go({ name: 'backup' })}>
+          備份與還原
+        </button>
+        <p className="muted">卡片只存在這支手機裡。沒有備份檔，手機出事就救不回來。</p>
+      </section>
+
+      <section className="settings-group">
         <h2>資料</h2>
         <div className="callout warn">
           <b>備份功能尚未完成（M4）</b>

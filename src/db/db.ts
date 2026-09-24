@@ -7,7 +7,7 @@ import { DEFAULT_SETTINGS, type Card, type Settings, type Transaction, type Tran
 
 export const DB_NAME = 'seven-card-wallet';
 const DB_VERSION = 1;
-const SETTINGS_KEY = 'singleton';
+export const SETTINGS_KEY = 'singleton';
 
 interface WalletSchema extends DBSchema {
   cards: {
@@ -28,17 +28,32 @@ interface WalletSchema extends DBSchema {
 
 export type WalletDB = IDBPDatabase<WalletSchema>;
 
+/**
+ * schema 升級。**每次改 schema 就把 DB_VERSION +1，並在下面「新增」一個 if 區塊，
+ * 絕對不要改既有區塊、也不要把建立語句搬出 if。**
+ *
+ * 為什麼一定要有 oldVersion 分支：`upgrade` 對既有使用者也會跑。若無條件呼叫
+ * `createObjectStore('cards')`，版本一推到 2，store 已存在就丟 ConstraintError，
+ * 整個 IndexedDB 打不開——使用者的卡片會全部讀不到，而且是自動更新推過去的。
+ * 這條路沒有回頭票，所以用 upgrade.test.ts 釘住。
+ */
+export function upgradeWalletDB(db: IDBPDatabase<WalletSchema>, oldVersion: number): void {
+  if (oldVersion < 1) {
+    const cards = db.createObjectStore('cards', { keyPath: 'id' });
+    cards.createIndex('status', 'status');
+    cards.createIndex('balance', 'balance');
+    cards.createIndex('code', 'code', { unique: true });
+    cards.createIndex('hiddenCode', 'hiddenCode', { unique: true });
+    const txs = db.createObjectStore('transactions', { keyPath: 'id' });
+    txs.createIndex('status', 'status');
+    db.createObjectStore('settings');
+  }
+}
+
 export function openWalletDB(name = DB_NAME): Promise<WalletDB> {
   return openDB<WalletSchema>(name, DB_VERSION, {
-    upgrade(db) {
-      const cards = db.createObjectStore('cards', { keyPath: 'id' });
-      cards.createIndex('status', 'status');
-      cards.createIndex('balance', 'balance');
-      cards.createIndex('code', 'code', { unique: true });
-      cards.createIndex('hiddenCode', 'hiddenCode', { unique: true });
-      const txs = db.createObjectStore('transactions', { keyPath: 'id' });
-      txs.createIndex('status', 'status');
-      db.createObjectStore('settings');
+    upgrade(db, oldVersion) {
+      upgradeWalletDB(db, oldVersion);
     },
   });
 }
