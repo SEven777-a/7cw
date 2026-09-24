@@ -912,8 +912,9 @@ legend {
   line-height: 1.7;
 }
 
-.file-input {
-  margin-top: 4px;
+/* 隱藏原生檔案輸入，改用外觀一致的按鈕觸發 */
+.hidden-file {
+  display: none;
 }
 
 .install .callout {
