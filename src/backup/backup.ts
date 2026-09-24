@@ -205,21 +205,29 @@ export interface ExportOptions {
   now?: number;
 }
 
-/** 匯出成 .7cw 位元組，並記下匯出時間（M5 的 14 天提醒要用） */
+/**
+ * 產生 .7cw 位元組。
+ *
+ * **刻意不在這裡寫 lastExportAt。** 位元組做好不等於使用者真的把檔案存出去了——
+ * iOS 的分享面板可以按取消。若在這裡就記成「已備份」，畫面會顯示今天備份過、
+ * M5 的 14 天提醒也會安靜下來，但實際上一個檔案都不存在。
+ * 檔案確定送出去之後，由呼叫端呼叫 markExported()。
+ */
 export async function exportBackup(
   db: WalletDB,
   password: string,
   { iterations = DEFAULT_ITERATIONS, now = Date.now() }: ExportOptions = {},
 ): Promise<{ bytes: Uint8Array; filename: string }> {
   const payload = await collectBackup(db, now);
-  // 密碼空白會在這裡就丟出，下面的 lastExportAt 不會被寫到
   const bytes = await encryptBackup(JSON.stringify(payload), password, { iterations });
-
   const stamp = new Date(now).toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' }).slice(0, 16).replace(/[-: ]/g, '');
+  return { bytes, filename: `7cw-backup-${stamp}.7cw` };
+}
+
+/** 備份檔確實送出去之後才呼叫（M5 的 14 天提醒依據這個時間） */
+export async function markExported(db: WalletDB, now = Date.now()): Promise<void> {
   const settings = await db.get('settings', SETTINGS_KEY);
   await db.put('settings', { ...DEFAULT_SETTINGS, ...settings, lastExportAt: now }, SETTINGS_KEY);
-
-  return { bytes, filename: `7cw-backup-${stamp}.7cw` };
 }
 
 /**

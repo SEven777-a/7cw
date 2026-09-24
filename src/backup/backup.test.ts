@@ -7,7 +7,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { addCard, getSettings, openWalletDB, saveSettings, type WalletDB } from '../db/db';
 import { BackupFormatError, DEFAULT_ITERATIONS, decryptBackup, encryptBackup, MAGIC } from './format';
-import { collectBackup, exportBackup, importBackup } from './backup';
+import { collectBackup, exportBackup, importBackup, markExported } from './backup';
 
 const FAST = { iterations: 1000 };
 
@@ -98,15 +98,36 @@ describe('DT-10 匯出檔內容不得含明文卡號', () => {
     db.close();
   });
 
-  it('匯出成功會記下 lastExportAt（M5 的 14 天提醒要用）', async () => {
+  // 「上次備份」的時間點刻意不由 exportBackup 決定：
+  // 位元組做好不等於使用者把檔案存出去了（iOS 分享面板可以按取消）。
+  // 若在產生位元組時就記成已備份，畫面會顯示今天備份過、14 天提醒也會安靜，實際卻一個檔案都沒有。
+  it('產生備份檔本身不會寫 lastExportAt', async () => {
+    const db = await freshDB();
+    await exportBackup(db, 'pw', { ...FAST, now: Date.parse('2026-09-24T02:30:00Z') });
+    expect((await getSettings(db)).lastExportAt).toBeUndefined();
+    db.close();
+  });
+
+  it('檔案確實送出去後，markExported 才記下時間', async () => {
     const db = await freshDB();
     const now = Date.parse('2026-09-24T02:30:00Z');
     await exportBackup(db, 'pw', { ...FAST, now });
+    await markExported(db, now);
     expect((await getSettings(db)).lastExportAt).toBe(now);
     db.close();
   });
 
-  it('密碼空白時不更新 lastExportAt（沒備份成功就不能算備份過）', async () => {
+  it('markExported 不動其他設定', async () => {
+    const db = await freshDB();
+    await saveSettings(db, { maxCardsPerTransaction: 3 });
+    await markExported(db, 123);
+    const s = await getSettings(db);
+    expect(s.maxCardsPerTransaction).toBe(3);
+    expect(s.lastExportAt).toBe(123);
+    db.close();
+  });
+
+  it('密碼空白時連備份檔都產不出來', async () => {
     const db = await freshDB();
     await expect(exportBackup(db, '', FAST)).rejects.toMatchObject({ code: 'EMPTY_PASSWORD' });
     expect((await getSettings(db)).lastExportAt).toBeUndefined();

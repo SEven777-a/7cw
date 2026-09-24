@@ -5,7 +5,7 @@
 
 import { useRef, useState } from 'react';
 import { useWallet } from '../app/wallet';
-import { exportBackup, importBackup, type ImportMode, type ImportResult } from '../backup/backup';
+import { exportBackup, importBackup, markExported, type ImportMode, type ImportResult } from '../backup/backup';
 import { BackupFormatError } from '../backup/format';
 import { Header } from '../ui/common';
 
@@ -31,22 +31,32 @@ export function BackupScreen() {
       const file = new File([bytes as BlobPart], filename, { type: 'application/octet-stream' });
 
       if (navigator.canShare?.({ files: [file] })) {
+        // 取消會丟 AbortError，下面接住；沒丟就代表檔案確實送出去了
         await navigator.share({ files: [file], title: '7cw 備份' });
       } else {
         const url = URL.createObjectURL(file);
         const a = document.createElement('a');
         a.href = url;
         a.download = filename;
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        a.remove();
+        // 立刻 revoke 有機會讓下載中途斷掉，留一段時間再收
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
       }
+
+      // 檔案確定送出去了才記「上次備份」（見 backup.ts 的說明）
+      await markExported(db);
       await reload();
       setExportPassword('');
       setExportConfirm('');
-      toast('已匯出，請把檔案存到安全的地方');
+      toast('已匯出，請確認檔案有存到你找得到的地方');
     } catch (e) {
-      // 使用者在分享面板按取消不算錯誤
-      if (e instanceof DOMException && e.name === 'AbortError') return;
+      // 在分享面板按取消：沒有備份成功，要講清楚，不能默默當作沒事
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        toast('已取消，這次沒有建立備份');
+        return;
+      }
       toast(e instanceof Error ? e.message : '匯出失敗');
     } finally {
       setBusy(null);
