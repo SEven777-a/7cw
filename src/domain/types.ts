@@ -56,6 +56,9 @@ export interface Settings {
   lockedUntil?: number;
   lastExportAt?: number;
   backupReminderSnoozedUntil?: number;
+  /** 記住備份密碼以便一鍵備份。明文存在本機，理由見 §6.2 與 §5 FR-07 */
+  rememberBackupPassword: boolean;
+  backupPassword?: string;
   onboardingDone: boolean;
   hideBrightnessHint: boolean; // FR-04「請將亮度調到最高」不再顯示
 }
@@ -68,6 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lockEnabled: false,
   lockMethod: 'pin',
   failedAttempts: 0,
+  rememberBackupPassword: false,
   onboardingDone: false,
   hideBrightnessHint: false,
 };

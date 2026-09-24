@@ -4,6 +4,7 @@ import { canUseWallet, requestPersistentStorage } from './platform';
 import { AddCardScreen } from './screens/AddCardScreen';
 import { ArchivedScreen } from './screens/ArchivedScreen';
 import { BackfillScreen } from './screens/BackfillScreen';
+import { BackupBanner } from './screens/BackupBanner';
 import { BackupScreen } from './screens/BackupScreen';
 import { CardDetailScreen } from './screens/CardDetailScreen';
 import { CardsScreen } from './screens/CardsScreen';
@@ -56,6 +57,8 @@ function Shell() {
       return (
         <div className="app">
           <main className="tab-body">
+            {/* 三個分頁都顯示：FR-07 要求提醒不可關閉，只能延後 */}
+            <BackupBanner />
             {route.tab === 'checkout' && <CheckoutScreen />}
             {route.tab === 'cards' && <CardsScreen />}
             {route.tab === 'settings' && <SettingsScreen />}

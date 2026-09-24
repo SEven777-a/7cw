@@ -134,6 +134,21 @@ describe('DT-10 匯出檔內容不得含明文卡號', () => {
     db.close();
   });
 
+  it('備份密碼本身絕對不進備份檔（鑰匙不能鎖在盒子裡）', async () => {
+    const db = await freshDB();
+    await addCard(db, CARD_A);
+    await saveSettings(db, { rememberBackupPassword: true, backupPassword: 'PASSWORD_SHOULD_NOT_APPEAR' });
+
+    const payload = await collectBackup(db);
+    expect(payload.settings.backupPassword).toBeUndefined();
+    // 記住密碼這個「開關」可以帶過去，密碼本身不行
+    expect(payload.settings.rememberBackupPassword).toBe(true);
+
+    const { bytes } = await exportBackup(db, 'pw', FAST);
+    expect(Buffer.from(bytes).includes(Buffer.from('PASSWORD_SHOULD_NOT_APPEAR'))).toBe(false);
+    db.close();
+  });
+
   it('PIN 與 WebAuthn 欄位不進備份檔', async () => {
     const db = await freshDB();
     await saveSettings(db, { pinHash: 'HASH_SHOULD_NOT_APPEAR', webauthnCredentialId: 'CRED_SHOULD_NOT_APPEAR', failedAttempts: 3 });

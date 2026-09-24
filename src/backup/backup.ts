@@ -16,10 +16,21 @@ export const BACKUP_SCHEMA_VERSION = 1;
 
 /**
  * 不進備份檔的設定欄位。
- * 前三個是 §5 FR-07 明文要求（PIN 與 WebAuthn 憑證）；
- * 後兩個是「這支手機此刻的鎖定狀態」，帶到另一支手機上沒有意義，還可能讓人一匯入就被鎖住。
+ * - `pinHash` / `pinSalt` / `webauthnCredentialId`：§5 FR-07 明文要求。
+ * - `failedAttempts` / `lockedUntil`：這支手機此刻的鎖定狀態，帶到另一支手機沒有意義，
+ *   還可能讓人一匯入就被鎖住。
+ * - `backupPassword`：見下方逐條說明。
  */
-const SETTINGS_EXCLUDED = ['pinHash', 'pinSalt', 'webauthnCredentialId', 'failedAttempts', 'lockedUntil'] as const;
+const SETTINGS_EXCLUDED = [
+  'pinHash',
+  'pinSalt',
+  'webauthnCredentialId',
+  'failedAttempts',
+  'lockedUntil',
+  // 備份檔自己的密碼絕對不能寫進備份檔：那等於把鎖的鑰匙放進上鎖的盒子裡，
+  // 檔案一旦外流，加密就完全失去意義。
+  'backupPassword',
+] as const;
 
 export interface BackupPhoto {
   type: string;

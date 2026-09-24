@@ -5,16 +5,21 @@
 
 import { useRef, useState } from 'react';
 import { useWallet } from '../app/wallet';
-import { exportBackup, importBackup, markExported, type ImportMode, type ImportResult } from '../backup/backup';
+import { importBackup, type ImportMode, type ImportResult } from '../backup/backup';
 import { BackupFormatError } from '../backup/format';
+import { createAndShareBackup } from '../backup/share';
+import { saveSettings } from '../db/db';
 import { Header } from '../ui/common';
 
 type Busy = 'export' | 'import' | null;
 
 export function BackupScreen() {
   const { db, go, reload, settings, toast } = useWallet();
-  const [exportPassword, setExportPassword] = useState('');
-  const [exportConfirm, setExportConfirm] = useState('');
+  const saved = settings.backupPassword ?? '';
+  // 已經記住密碼的話直接帶入，使用者按一下就好
+  const [exportPassword, setExportPassword] = useState(saved);
+  const [exportConfirm, setExportConfirm] = useState(saved);
+  const [remember, setRemember] = useState(settings.rememberBackupPassword);
   const [importPassword, setImportPassword] = useState('');
   const [mode, setMode] = useState<ImportMode>('merge');
   const [busy, setBusy] = useState<Busy>(null);
@@ -27,36 +32,24 @@ export function BackupScreen() {
 
     setBusy('export');
     try {
-      const { bytes, filename } = await exportBackup(db, exportPassword);
-      const file = new File([bytes as BlobPart], filename, { type: 'application/octet-stream' });
-
-      if (navigator.canShare?.({ files: [file] })) {
-        // 取消會丟 AbortError，下面接住；沒丟就代表檔案確實送出去了
-        await navigator.share({ files: [file], title: '7cw 備份' });
-      } else {
-        const url = URL.createObjectURL(file);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        // 立刻 revoke 有機會讓下載中途斷掉，留一段時間再收
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      }
-
-      // 檔案確定送出去了才記「上次備份」（見 backup.ts 的說明）
-      await markExported(db);
-      await reload();
-      setExportPassword('');
-      setExportConfirm('');
-      toast('已匯出，請確認檔案有存到你找得到的地方');
-    } catch (e) {
-      // 在分享面板按取消：沒有備份成功，要講清楚，不能默默當作沒事
-      if (e instanceof DOMException && e.name === 'AbortError') {
+      const outcome = await createAndShareBackup(db, exportPassword);
+      if (outcome === 'cancelled') {
         toast('已取消，這次沒有建立備份');
         return;
       }
+      // 記住密碼是為了讓提醒橫幅能一鍵備份。密碼明文存在本機，
+      // 但能解鎖手機的人本來就看得到所有條碼了，這不會讓威脅模型更糟（§6.2）。
+      await saveSettings(db, {
+        rememberBackupPassword: remember,
+        backupPassword: remember ? exportPassword : undefined,
+      });
+      await reload();
+      if (!remember) {
+        setExportPassword('');
+        setExportConfirm('');
+      }
+      toast('已匯出，請確認檔案有存到你找得到的地方');
+    } catch (e) {
       toast(e instanceof Error ? e.message : '匯出失敗');
     } finally {
       setBusy(null);
@@ -113,6 +106,14 @@ export function BackupScreen() {
             <input type="password" autoComplete="new-password" value={exportConfirm} onChange={(e) => setExportConfirm(e.target.value)} />
           </label>
         </div>
+        <label className="setting">
+          <span>記住密碼，之後一鍵備份</span>
+          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+        </label>
+        <p className="muted">
+          勾了之後，提醒出現時按一下就能備份，不用再打密碼。密碼會存在這支手機裡——
+          能解鎖你手機的人本來就看得到所有條碼，所以這不會讓安全性變差。密碼不會寫進備份檔。
+        </p>
         <button className="primary block" disabled={busy !== null} onClick={() => void runExport()}>
           {busy === 'export' ? '加密中…' : '匯出備份檔'}
         </button>
