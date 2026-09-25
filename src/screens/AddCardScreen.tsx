@@ -22,13 +22,15 @@ interface NeedCode {
   photo: Blob;
 }
 
+// 上一張存檔的面額：放在模組層級，App 開著期間都記得（按「存檔並結束」再進來也沿用），關掉 App 才重設
+let lastSavedFace: number | null = null;
+
 export function AddCardScreen() {
   const { go } = useWallet();
   const [scanned, setScanned] = useState<Scanned | null>(null);
   const [needCode, setNeedCode] = useState<NeedCode | null>(null);
   const [savedCount, setSavedCount] = useState(0);
-  // 上一張存檔的面額；連續新增時下一張沿用
-  const [lastFace, setLastFace] = useState<number | null>(null);
+  const [lastFace, setLastFace] = useState<number | null>(lastSavedFace);
 
   return (
     <div className="screen">
@@ -44,6 +46,7 @@ export function AddCardScreen() {
           onRescan={() => setScanned(null)}
           onSaved={(continueScan, faceValue) => {
             setSavedCount((n) => n + 1);
+            lastSavedFace = faceValue;
             setLastFace(faceValue);
             if (continueScan) setScanned(null);
             else go({ name: 'tabs', tab: 'cards' });

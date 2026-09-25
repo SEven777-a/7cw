@@ -82,14 +82,11 @@ export function SettingsScreen() {
           備份與還原
         </button>
         <p className="muted">卡片只存在這支手機裡。沒有備份檔，手機出事就救不回來。</p>
+        <p className="muted">實體卡請保留：條碼毀損時可憑卡申請補發。</p>
       </section>
 
       <section className="settings-group">
         <h2>資料</h2>
-        <div className="callout warn">
-          <b>備份功能尚未完成（M4）</b>
-          <p>目前卡片只存在這支手機。實體卡請保留，手機遺失或 App 被刪除時資料無法救回。</p>
-        </div>
         <div className="setting">
           <span>主畫面模式</span>
           <span className="muted">

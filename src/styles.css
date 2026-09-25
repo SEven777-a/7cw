@@ -929,3 +929,31 @@ legend {
 .backup-banner .primary {
   margin-top: 12px;
 }
+
+/* FR-02 同面額分組 */
+.chevron {
+  display: inline-block;
+  margin-right: 2px;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+
+.chevron.open {
+  transform: rotate(90deg);
+}
+
+.card-sublist {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 16px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.card-sublist li + li {
+  border-top: 1px solid var(--line);
+}
+
+.card-sublist .card-balance {
+  font-size: 18px;
+}
