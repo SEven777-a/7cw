@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWallet } from '../app/wallet';
 import { addCard, findByCodes } from '../db/db';
+import { FACE_VALUES, initialFaceChoice } from '../domain/face-value';
 import { isValidCode, last4, scanCompleteness } from '../domain/validate';
 import { isIOS } from '../platform';
 import { captureVideoFrame, compressToJpeg } from '../scan/photo';
@@ -21,13 +22,13 @@ interface NeedCode {
   photo: Blob;
 }
 
-const FACE_VALUES = [35, 50, 100];
-
 export function AddCardScreen() {
   const { go } = useWallet();
   const [scanned, setScanned] = useState<Scanned | null>(null);
   const [needCode, setNeedCode] = useState<NeedCode | null>(null);
   const [savedCount, setSavedCount] = useState(0);
+  // 上一張存檔的面額；連續新增時下一張沿用
+  const [lastFace, setLastFace] = useState<number | null>(null);
 
   return (
     <div className="screen">
@@ -39,9 +40,11 @@ export function AddCardScreen() {
       {scanned ? (
         <CardForm
           scanned={scanned}
+          lastFace={lastFace}
           onRescan={() => setScanned(null)}
-          onSaved={(continueScan) => {
+          onSaved={(continueScan, faceValue) => {
             setSavedCount((n) => n + 1);
+            setLastFace(faceValue);
             if (continueScan) setScanned(null);
             else go({ name: 'tabs', tab: 'cards' });
           }}
@@ -287,11 +290,23 @@ function ManualCodeForm({
 
 // ───────── 表單 ─────────
 
-function CardForm({ scanned, onRescan, onSaved }: { scanned: Scanned; onRescan: () => void; onSaved: (continueScan: boolean) => void }) {
+function CardForm({
+  scanned,
+  lastFace,
+  onRescan,
+  onSaved,
+}: {
+  scanned: Scanned;
+  lastFace: number | null;
+  onRescan: () => void;
+  onSaved: (continueScan: boolean, faceValue: number) => void;
+}) {
   const { db, reload, toast } = useWallet();
-  const [face, setFace] = useState<number | 'other'>(35);
-  const [otherFace, setOtherFace] = useState('');
-  const [balanceText, setBalanceText] = useState('35');
+  const [initial] = useState(() => initialFaceChoice(lastFace));
+  const [face, setFace] = useState<number | 'other'>(initial.face);
+  const [otherFace, setOtherFace] = useState(initial.otherFace);
+  // 餘額預設等於面額；上一張改過的餘額不沿用
+  const [balanceText, setBalanceText] = useState(String(lastFace ?? 35));
   const [balanceTouched, setBalanceTouched] = useState(false);
   const [nickname, setNickname] = useState('');
   const [saving, setSaving] = useState(false);
@@ -323,7 +338,7 @@ function CardForm({ scanned, onRescan, onSaved }: { scanned: Scanned; onRescan: 
       }
       await reload();
       toast(`已存 末 ${last4(scanned.code)} · ${balance} 元`);
-      onSaved(continueScan);
+      onSaved(continueScan, faceValue);
     } finally {
       setSaving(false);
     }
@@ -340,7 +355,7 @@ function CardForm({ scanned, onRescan, onSaved }: { scanned: Scanned; onRescan: 
       </div>
 
       <fieldset>
-        <legend>面額</legend>
+        <legend>面額{lastFace !== null && <span className="muted">（沿用上一張）</span>}</legend>
         <div className="segmented">
           {FACE_VALUES.map((v) => (
             <button key={v} className={face === v ? 'active' : ''} onClick={() => pickFace(v)}>
